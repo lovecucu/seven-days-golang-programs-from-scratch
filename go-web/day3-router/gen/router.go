@@ -64,7 +64,7 @@ func (r *router) getRoute(method string, path string) (*node, map[string]string)
 				params[part[1:]] = searchParts[index] // 动态路由的param保存
 			}
 
-			if part[0] == '*' && len(part) > 1 {
+			if part[0] == '*' && len(part) > 1 { // 如果这个node的part[0]是*，则将后续path作为一个path返回
 				params[part[1:]] = strings.Join(searchParts[index:], "/") //
 				break
 			}

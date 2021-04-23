@@ -10,6 +10,8 @@ package main
 // {"password":"1234","username":"geektutu"}
 // $ curl localhost:8080/xxx
 // 404 NOT FOUND: /xxx
+// curl localhost:8080/assets/a.js
+// {"filepath":"a.js"}
 
 import (
 	"gen"
@@ -29,6 +31,10 @@ func main() {
 	engine.GET("/hello/:name", func(c *gen.Context) {
 		// expect /hello/lovecucu
 		c.String(http.StatusOK, "hello %s, you're at %s\n", c.Param("name"), c.Path)
+	})
+	engine.GET("/assets/*filepath", func(c *gen.Context) {
+		// expect /assets/css/a.css
+		c.JSON(http.StatusOK, gen.H{"filepath": c.Param("filepath")})
 	})
 	engine.POST("/login", func(c *gen.Context) {
 		c.JSON(http.StatusOK, gen.H{
