@@ -18,6 +18,7 @@ func newRouter() *router {
 	}
 }
 
+// 分析路由
 func parsePattern(pattern string) []string {
 	vs := strings.Split(pattern, "/")
 	parts := make([]string, 0)
@@ -32,6 +33,7 @@ func parsePattern(pattern string) []string {
 	return parts
 }
 
+// 添加路由
 func (r *router) addRoute(method string, pattern string, handler HandlerFunc) {
 	_, ok := r.roots[method]
 	if !ok {
@@ -43,10 +45,12 @@ func (r *router) addRoute(method string, pattern string, handler HandlerFunc) {
 	r.handlers[routeKey(method, pattern)] = handler
 }
 
+// 获取map中的路由key
 func routeKey(method string, pattern string) string {
 	return method + "-" + pattern
 }
 
+// 根据请求方法+路径获取路由，并解析路由中的参数绑定
 func (r *router) getRoute(method string, path string) (*node, map[string]string) {
 	root, ok := r.roots[method]
 	if !ok {
@@ -73,13 +77,14 @@ func (r *router) getRoute(method string, path string) (*node, map[string]string)
 	return n, params
 }
 
+// 用来处理请求
 func (r *router) handle(c *Context) {
-	n, params := r.getRoute(c.Method, c.Path)
+	n, params := r.getRoute(c.Method, c.Path) // 解析路由
 	fmt.Printf("%+v, %+v\n\n", n, params)
-	if n != nil {
+	if n != nil { // 路由存在，则执行对应的处理逻辑
 		c.Params = params
 		r.handlers[routeKey(c.Method, n.pattern)](c)
-	} else {
+	} else { // 路由不存在，则404
 		c.String(http.StatusNotFound, "404 NOT FOUND: %s\n", c.Path)
 	}
 }
