@@ -3,11 +3,14 @@ package lru
 import "container/list"
 
 type Cache struct {
-	// 缓存实体的最大数量
-	MaxEntries int
+	// 缓存实体占用的最大内存
+	maxBytes int64
+
+	// 缓存实体已占用的内存
+	nbytes int64
 
 	// 删除过期key时的回调（可选）
-	OnEvicted func(key Key, value interface{})
+	OnEvicted func(key string, value Value)
 
 	// 双向链表，用于存储缓存实体
 	ll *list.List
@@ -16,53 +19,60 @@ type Cache struct {
 	cache map[interface{}]*list.Element
 }
 
-// 定义key的类型
-type Key interface{}
-
 // 定义缓存实体的结构（仅包内使用）
 type entry struct {
-	key   Key
-	value interface{}
+	key   string
+	value Value
 }
 
-func New(maxEntries int) *Cache {
+type Value interface {
+	Len() int
+}
+
+func New(maxBytes int64, onEvicted func(string, Value)) *Cache {
 	return &Cache{
-		MaxEntries: maxEntries,
-		ll:         list.New(),
-		cache:      make(map[interface{}]*list.Element),
+		maxBytes:  maxBytes,
+		ll:        list.New(),
+		OnEvicted: onEvicted,
+		cache:     make(map[interface{}]*list.Element),
 	}
 }
 
 // 添加缓存，已存在则更新值
-func (c *Cache) Add(key Key, value interface{}) {
+func (c *Cache) Add(key string, value Value) {
 	if c.cache == nil {
 		c.cache = make(map[interface{}]*list.Element)
 		c.ll = list.New()
 	}
 	if ee, ok := c.cache[key]; ok {
 		c.ll.MoveToFront(ee)
-		ee.Value.(*entry).value = value
+		kv := ee.Value.(*entry)
+		c.nbytes += int64(value.Len()) - int64(kv.value.Len()) // 计算value的内存占用差值
+		kv.value = value
 		return
+	} else {
+		ele := c.ll.PushFront(&entry{key, value})
+		c.cache[key] = ele
+		c.nbytes += int64(len(key)) + int64(value.Len()) // 计算新key,value的内存占用
 	}
-	ele := c.ll.PushFront(&entry{key, value})
-	c.cache[key] = ele
-	if c.MaxEntries != 0 && c.ll.Len() > c.MaxEntries {
+	for c.maxBytes != 0 && c.maxBytes < c.nbytes { // 淘汰最少访问的节点
 		c.RemoveOldest()
 	}
 }
 
-func (c *Cache) Get(key Key) (value interface{}, ok bool) {
+func (c *Cache) Get(key string) (value Value, ok bool) {
 	if c.cache == nil {
 		return
 	}
 	if ele, hit := c.cache[key]; hit {
+		c.ll.MoveToFront(ele) // 移动队首
 		return ele.Value.(*entry).value, true
 	}
 	return
 }
 
 // 删除某个key
-func (c *Cache) Remove(key Key) {
+func (c *Cache) Remove(key string) {
 	if c.cache == nil {
 		return
 	}
@@ -87,6 +97,7 @@ func (c *Cache) removeElement(e *list.Element) {
 	c.ll.Remove(e)
 	kv := e.Value.(*entry)
 	delete(c.cache, kv.key)
+	c.nbytes -= int64(len(kv.key)) + int64(kv.value.Len())
 	if c.OnEvicted != nil {
 		c.OnEvicted(kv.key, kv.value)
 	}
@@ -110,4 +121,6 @@ func (c *Cache) Clear() {
 	}
 	c.ll = nil
 	c.cache = nil
+	c.maxBytes = 0
+	c.nbytes = 0
 }
