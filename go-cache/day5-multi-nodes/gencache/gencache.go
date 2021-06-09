@@ -80,14 +80,15 @@ func (g *Group) Get(key string) (ByteView, error) {
 // 加载缓存（可能本地获取，也可能从其它节点获取）
 func (g *Group) load(key string) (value ByteView, err error) {
 	if g.peers != nil {
+		// key从其他节点获取
 		if peer, ok := g.peers.PickPeer(key); ok {
 			if value, err = g.getFromPeer(peer, key); err == nil {
 				return value, nil
 			}
-			log.Println("[GeeCache] Failed to get from peer", err)
+			log.Println("[GeeCache] Failed to get from peer", err) // 远程获取失败，会从本地再获取一次
 		}
 	}
-	return g.getLocally(key)
+	return g.getLocally(key) // 本地获取
 }
 
 // 远程获取

@@ -20,11 +20,11 @@ type HTTPPool struct {
 	self        string // 记录主机名/ip和端口
 	basePath    string // 前缀地址，默认是/_geecache/
 	mu          sync.Mutex
-	peers       *consistenthash.Map    // 用来计算节点
+	peers       *consistenthash.Map    // 一致性哈希获取key的节点
 	httpGetters map[string]*httpGetter // 远程节点和对应的httpGetter的映射
 }
 
-// 初始化
+// New一个实例
 func NewHTTPPool(self string) *HTTPPool {
 	return &HTTPPool{
 		self:     self,
@@ -38,6 +38,7 @@ func (p *HTTPPool) Log(format string, v ...interface{}) {
 }
 
 func (p *HTTPPool) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// 判断请求路径是否包含basePath
 	if !strings.HasPrefix(r.URL.Path, p.basePath) {
 		panic("HTTPPool serving unexpected path: " + r.URL.Path)
 	}
@@ -84,9 +85,10 @@ func (p *HTTPPool) Set(peers ...string) {
 func (p *HTTPPool) PickPeer(key string) (PeerGetter, bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	// 获取PeerGetter
 	if peer := p.peers.Get(key); peer != "" && peer != p.self {
 		p.Log("Pick peer %s", peer)
-		return p.httpGetters[peer], true
+		return p.httpGetters[peer], true // 返回peer对应的PeerGetter
 	}
 	return nil, false
 }
@@ -97,22 +99,26 @@ type httpGetter struct {
 
 // 根据httpGetter获取缓存值
 func (h *httpGetter) Get(group string, key string) ([]byte, error) {
+	// 拼接完整url
 	u := fmt.Sprintf(
 		"%v%v/%v",
 		h.baseURL,
 		url.QueryEscape(group),
 		url.QueryEscape(key),
 	)
+	// 发送Get请求获取key的值
 	res, err := http.Get(u)
 	if err != nil {
 		return nil, err
 	}
 	defer res.Body.Close()
 
+	// 响应异常直接返回报错
 	if res.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("server returned: %v", res.Status)
 	}
 
+	// 读取返回值
 	bytes, err := ioutil.ReadAll(res.Body)
 	if err != nil {
 		return nil, fmt.Errorf("reading response body: %v", err)
@@ -121,4 +127,5 @@ func (h *httpGetter) Get(group string, key string) ([]byte, error) {
 	return bytes, nil
 }
 
+// 判断httpGetter是否实现了PeerGetter接口
 var _ PeerGetter = (*httpGetter)(nil)
